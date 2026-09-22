@@ -1,0 +1,341 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<title>Flores en la Galaxia 🌻✨</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Dancing+Script:wght@600;700&family=Quicksand:wght@400;600&display=swap">
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  html, body { height: 100%; width: 100%; overflow: hidden; background: #020005; color: #fff; font-family: 'Quicksand', sans-serif; }
+  #canvas-container { position: fixed; inset: 0; z-index: 1; }
+
+  #texto { position: fixed; z-index: 2; color: #f3e8ff; text-shadow: 0 2px 10px rgba(0,0,0,0.8); pointer-events: none; }
+  
+  /* Adaptación Responsiva PC vs Celular */
+  @media (min-aspect-ratio: 1/1) {
+    /* PC / Pantallas horizontales */
+    #texto { left: 5vw; top: 50%; transform: translateY(-50%); width: 38vw; text-align: left; }
+  }
+  @media (max-aspect-ratio: 1/1) {
+    /* Celulares / Pantallas verticales */
+    #texto { left: 6vw; right: 6vw; top: calc(env(safe-area-inset-top, 0px) + 5vh); text-align: center; width: auto; }
+  }
+
+  #titulo { font-family: 'Dancing Script', cursive; font-size: clamp(26px, 5vw, 48px); color: #ffd700; line-height: 1.15; margin-bottom: .5em; min-height: 1.15em; text-shadow: 0 0 15px rgba(255, 215, 0, 0.5); }
+  #mensaje { font-size: clamp(15px, 2.5vw, 22px); line-height: 1.55; white-space: pre-wrap; min-height: 3em; }
+  .cursor { display: inline-block; width: 2px; height: 1em; background: #ffd700; margin-left: 2px; vertical-align: -3px; animation: blink 1s steps(1) infinite; }
+
+  #inicio { position: fixed; inset: 0; z-index: 10; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 16px; background: #020005; cursor: pointer; transition: opacity .9s ease; -webkit-tap-highlight-color: transparent; }
+  #inicio.fuera { opacity: 0; pointer-events: none; }
+  #inicio .flor { font-size: clamp(50px, 15vw, 72px); animation: latir 1.3s ease-in-out infinite; filter: drop-shadow(0 0 18px rgba(255,215,0,0.6)); }
+  #inicio span { font-family: 'Dancing Script', cursive; font-size: clamp(22px, 6vw, 30px); color: #ffd700; }
+
+  @keyframes latir { 0%, 100% { transform: scale(1); } 50% { transform: scale(1.15); } }
+  @keyframes blink { 50% { opacity: 0; } }
+</style>
+<!-- CDN de Three.js -->
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+</head>
+<body>
+
+<div id="canvas-container"></div>
+
+<div id="texto">
+  <h1 id="titulo"></h1>
+  <p id="mensaje"></p>
+</div>
+
+<div id="inicio">
+  <div class="flor">🌻</div>
+  <span>Toca aquí</span>
+</div>
+
+<script>
+/* ====== EDITA AQUÍ ====== */
+const CONFIG = {
+  titulo:  "Feliz día, un bonito lunes 🌻",
+  mensaje: "Hay flores que son hermosas, hay pétalos que son perfectos y hay sonrisas que con solo verlas conquistan el corazón. 💛"
+};
+/* ======================== */
+
+let scene, camera, renderer, mainGroup, galaxy, comets = [];
+let fallingFlowers = [];
+let flowerMat, flowerTex;
+let started = false, startTime = 0;
+
+function createSunflowerTexture() {
+  const canvas = document.createElement('canvas');
+  canvas.width = canvas.height = 128;
+  const ctx = canvas.getContext('2d');
+  ctx.translate(64, 64);
+
+  for (let i = 0; i < 12; i++) {
+    ctx.save(); ctx.rotate(i * Math.PI / 6);
+    ctx.beginPath(); ctx.ellipse(0, -34, 12, 26, 0, 0, Math.PI * 2);
+    ctx.fillStyle = '#FFD21F'; ctx.fill();
+    ctx.lineWidth = 2; ctx.strokeStyle = '#D9A200'; ctx.stroke();
+    ctx.restore();
+  }
+  ctx.beginPath(); ctx.arc(0, 0, 20, 0, Math.PI * 2); ctx.fillStyle = '#5B3A12'; ctx.fill();
+  return new THREE.CanvasTexture(canvas);
+}
+
+function init3D() {
+  const container = document.getElementById('canvas-container');
+  scene = new THREE.Scene();
+
+  camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 0.1, 1000);
+  camera.position.set(0, 4, 40);
+
+  renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
+  renderer.setSize(window.innerWidth, window.innerHeight);
+  renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+  container.appendChild(renderer.domElement);
+
+  // 1. Fondo de Estrellas
+  const starGeo = new THREE.BufferGeometry();
+  const starCount = 3000;
+  const starPositions = new Float32Array(starCount * 3);
+  for (let i = 0; i < starCount; i++) {
+    starPositions[i * 3] = (Math.random() - 0.5) * 200;
+    starPositions[i * 3 + 1] = (Math.random() - 0.5) * 200;
+    starPositions[i * 3 + 2] = -20 - Math.random() * 80;
+  }
+  starGeo.setAttribute('position', new THREE.BufferAttribute(starPositions, 3));
+  const starMat = new THREE.PointsMaterial({ size: 0.35, color: 0xffffff, transparent: true, opacity: 0.8 });
+  scene.add(new THREE.Points(starGeo, starMat));
+
+  mainGroup = new THREE.Group();
+  scene.add(mainGroup);
+
+  // 2. Galaxia Plana
+  const galaxyGeo = new THREE.BufferGeometry();
+  const count = 15000;
+  const positions = new Float32Array(count * 3);
+  const colors = new Float32Array(count * 3);
+
+  const colorInside = new THREE.Color('#ffaa00');
+  const colorOutside = new THREE.Color('#8b5cf6');
+
+  for (let i = 0; i < count; i++) {
+    const r = Math.random() * 24;
+    const spinAngle = r * 0.8;
+    const branchAngle = ((i % 4) * 2 * Math.PI) / 4;
+
+    const x = Math.cos(spinAngle + branchAngle) * r + (Math.random() - 0.5) * 1.5;
+    const y = (Math.random() - 0.5) * 0.2;
+    const z = Math.sin(spinAngle + branchAngle) * r + (Math.random() - 0.5) * 1.5;
+
+    positions[i * 3] = x; positions[i * 3 + 1] = y; positions[i * 3 + 2] = z;
+
+    const mixedColor = colorInside.clone().lerp(colorOutside, r / 24);
+    colors[i * 3] = mixedColor.r; colors[i * 3 + 1] = mixedColor.g; colors[i * 3 + 2] = mixedColor.b;
+  }
+
+  galaxyGeo.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+  galaxyGeo.setAttribute('color', new THREE.BufferAttribute(colors, 3));
+
+  const galaxyMat = new THREE.PointsMaterial({
+    size: 0.15, vertexColors: true, transparent: true, opacity: 0.85, blending: THREE.AdditiveBlending
+  });
+
+  galaxy = new THREE.Points(galaxyGeo, galaxyMat);
+  galaxy.position.set(0, -11, 0);
+  mainGroup.add(galaxy);
+
+  // 3. Tronco
+  const trunkCurve = new THREE.CatmullRomCurve3([
+    new THREE.Vector3(0, -11, 0),
+    new THREE.Vector3(-1.2, -4, 0.5),
+    new THREE.Vector3(0, 2, 0)
+  ]);
+  const trunkGeo = new THREE.TubeGeometry(trunkCurve, 30, 0.65, 12, false);
+  const trunkMat = new THREE.MeshBasicMaterial({ color: 0x8c593b });
+  mainGroup.add(new THREE.Mesh(trunkGeo, trunkMat));
+
+  // 4. Flores Corazón
+  const flowerGroup = new THREE.Group();
+  flowerTex = createSunflowerTexture();
+  flowerMat = new THREE.SpriteMaterial({ map: flowerTex, transparent: true });
+
+  const HEART = [];
+  for (let a = 0; a < Math.PI * 2; a += 0.05) {
+    HEART.push([16 * Math.sin(a) ** 3, 13 * Math.cos(a) - 5 * Math.cos(2 * a) - 2 * Math.cos(3 * a) - Math.cos(4 * a)]);
+  }
+  function dentro(x, y) {
+    let c = false;
+    for (let i = 0, j = HEART.length - 1; i < HEART.length; j = i++) {
+      const [xi, yi] = HEART[i], [xj, yj] = HEART[j];
+      if ((yi > y) !== (yj > y) && x < (xj - xi) * (y - yi) / (yj - yi) + xi) c = !c;
+    }
+    return c;
+  }
+
+  let n = 0;
+  while (n < 360) {
+    const x = Math.random() * 32 - 16;
+    const y = Math.random() * 28 - 14;
+    if (dentro(x, y)) {
+      const sprite = new THREE.Sprite(flowerMat);
+      sprite.position.set(x * 0.5, y * 0.5 + 9, (Math.random() - 0.5) * 3);
+      const scale = 0.8 + Math.random() * 0.6;
+      sprite.userData = { baseScale: scale, delay: Math.random() * 2 + 0.8, phase: Math.random() * 6 };
+      sprite.scale.set(0,0,0);
+      flowerGroup.add(sprite);
+      n++;
+    }
+  }
+  mainGroup.add(flowerGroup);
+
+  updateLayout();
+}
+
+// Adaptación de cámara y posición según pantalla
+function updateLayout() {
+  const isLandscape = window.innerWidth > window.innerHeight;
+  if (mainGroup && camera) {
+    if (isLandscape) {
+      // PC / Pantalla Ancha: Arbol a la derecha, texto a la izquierda
+      mainGroup.position.set(9, 0, 0);
+      camera.position.z = 40;
+    } else {
+      // Celular: Arbol centrado abajo, texto arriba
+      mainGroup.position.set(0, -3, 0);
+      camera.position.z = 48; // Mayor alejamiento para abarcar la escena vertical
+    }
+  }
+}
+
+function spawnComet() {
+  const geometry = new THREE.BufferGeometry();
+  const positions = new Float32Array(2 * 3);
+  const startX = -20 + Math.random() * 60;
+  const startY = 25 + Math.random() * 10;
+  const startZ = -10 + Math.random() * 20;
+
+  positions[0] = startX; positions[1] = startY; positions[2] = startZ;
+  positions[3] = startX + 2.8; positions[4] = startY + 2.8; positions[5] = startZ;
+
+  geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+  const material = new THREE.LineBasicMaterial({ color: 0xffea9f, transparent: true, opacity: 0.9 });
+
+  const line = new THREE.Line(geometry, material);
+  line.userData = { vx: -0.7 - Math.random() * 0.3, vy: -0.7 - Math.random() * 0.3, life: 1 };
+  scene.add(line);
+  comets.push(line);
+}
+
+function spawnFallingFlower() {
+  if (!started || !mainGroup) return;
+  const sprite = new THREE.Sprite(flowerMat);
+  const x = (Math.random() - 0.5) * 12 + mainGroup.position.x;
+  const y = mainGroup.position.y + 11 + Math.random() * 5;
+  const z = (Math.random() - 0.5) * 4;
+
+  sprite.position.set(x, y, z);
+  const scale = 0.4 + Math.random() * 0.4;
+  sprite.scale.set(scale, scale, 1);
+
+  sprite.userData = {
+    vy: 0.03 + Math.random() * 0.03,
+    vx: (Math.random() - 0.5) * 0.02,
+    swaySpeed: 1 + Math.random() * 2,
+    swayAmp: 0.02 + Math.random() * 0.02,
+    life: 1.0,
+    phase: Math.random() * Math.PI * 2
+  };
+
+  scene.add(sprite);
+  fallingFlowers.push(sprite);
+}
+
+function animate(now) {
+  requestAnimationFrame(animate);
+  const t = (now - startTime) * 0.001;
+
+  if (galaxy) galaxy.rotation.y = t * 0.15;
+
+  if (started && mainGroup) {
+    const flowers = mainGroup.children[2];
+    if (flowers) {
+      flowers.children.forEach(sprite => {
+        const dt = t - sprite.userData.delay;
+        if (dt > 0) {
+          const progress = Math.min(1, dt * 1.5);
+          const s = sprite.userData.baseScale * progress;
+          sprite.scale.set(s, s, 1);
+          sprite.position.z += Math.sin(t * 2 + sprite.userData.phase) * 0.003;
+        }
+      });
+    }
+  }
+
+  if (Math.random() < 0.03) spawnComet();
+  comets.forEach((c, i) => {
+    c.position.x += c.userData.vx;
+    c.position.y += c.userData.vy;
+    c.userData.life -= 0.018;
+    c.material.opacity = Math.max(0, c.userData.life);
+    if (c.userData.life <= 0 || c.position.y < -35) {
+      scene.remove(c);
+      comets.splice(i, 1);
+    }
+  });
+
+  if (started && Math.random() < 0.08) spawnFallingFlower();
+  fallingFlowers.forEach((f, i) => {
+    f.position.y -= f.userData.vy;
+    f.position.x += Math.sin(t * f.userData.swaySpeed + f.userData.phase) * f.userData.swayAmp + f.userData.vx;
+    
+    if (f.position.y < mainGroup.position.y - 8) {
+      f.userData.life -= 0.02;
+      f.material.opacity = Math.max(0, f.userData.life);
+    }
+
+    if (f.userData.life <= 0 || f.position.y < mainGroup.position.y - 15) {
+      scene.remove(f);
+      fallingFlowers.splice(i, 1);
+    }
+  });
+
+  camera.position.x = Math.sin(t * 0.15) * 1.5;
+  camera.lookAt(0, 0, 0);
+
+  renderer.render(scene, camera);
+}
+
+function escribir(el, texto, vel) {
+  return new Promise(res => {
+    const cur = document.createElement('span'); cur.className = 'cursor';
+    let i = 0; el.textContent = ''; el.appendChild(cur);
+    const chars = Array.from(texto);
+    const id = setInterval(() => {
+      cur.before(chars[i++]);
+      if (i >= chars.length) { clearInterval(id); cur.remove(); res(); }
+    }, vel);
+  });
+}
+
+document.getElementById('inicio').addEventListener('click', async function () {
+  if (started) return;
+  this.classList.add('fuera');
+  started = true; 
+  startTime = performance.now();
+  await new Promise(r => setTimeout(r, 800));
+  await escribir(document.getElementById('titulo'), CONFIG.titulo, 60);
+  await escribir(document.getElementById('mensaje'), CONFIG.mensaje, 45);
+});
+
+window.addEventListener('resize', () => {
+  camera.aspect = window.innerWidth / window.innerHeight;
+  camera.updateProjectionMatrix();
+  renderer.setSize(window.innerWidth, window.innerHeight);
+  updateLayout();
+});
+
+init3D();
+animate(0);
+</script>
+</body>
+</html>
